@@ -29,7 +29,7 @@ interface DataRow {
     time_ms: number;
 }
 
-const NUM_OF_ROWS = 10 * 10 * 1000;
+const NUM_OF_ROWS = 1000 * 1000;
 // Populate the WASM objects once.
 populate_objects(NUM_OF_ROWS);
 
@@ -76,7 +76,7 @@ function App() {
             <h1>
                 WASM Shared Memory with AgGrid (Vite + React + TS)
                 <br />
-                (11 fields, 10k items benchmark with time updates)
+                (11 fields, 1M items benchmark with time updates)
             </h1>
             <div
                 className="ag-theme-alpine"
