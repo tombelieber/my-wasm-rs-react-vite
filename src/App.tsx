@@ -1,25 +1,24 @@
 // src/App.tsx
-import
-    {
-        AllCommunityModule,
-        ColDef,
-        GridOptions,
-        ModuleRegistry,
-    } from "ag-grid-community";
+import {
+    ColDef,
+    GridApi,
+    GridOptions,
+    GridReadyEvent,
+    ModuleRegistry,
+} from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import { AgGridReact } from "ag-grid-react";
 import { populate_objects } from "wasm-shared-memory";
 import "./App.css";
 import { useWasmData } from "./useWasmData";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { AllEnterpriseModule } from "ag-grid-enterprise";
 
 // Register AgGrid community modules.
-ModuleRegistry.registerModules( [ AllEnterpriseModule ] );
+ModuleRegistry.registerModules([AllEnterpriseModule]);
 
-interface DataRow
-{
+interface DataRow {
     id: number;
     value: number;
     a: number;
@@ -33,20 +32,23 @@ interface DataRow
     time_ms: number;
 }
 
-const NUM_OF_ROWS = 10 * 10 * 1000;
+const NUM_OF_ROWS = 10 * 1000;
 // Populate the WASM objects once.
-populate_objects( NUM_OF_ROWS );
+populate_objects(NUM_OF_ROWS);
 
 // Define grid options with delta mode and unique row ID.
 const gridOptions: GridOptions<DataRow> = {
-    // getRowNodeId: (data: DataRow) => data.id.toString(),
-    getRowId: ( { data } ) => data.id.toString(),
+    getRowId: ({ data }) => data.id.toString(),
 };
 
-function App ()
-{
-    // Get the latest data from the custom hook (updates every 1s).
-    const rowData = useWasmData( 1000 );
+function App() {
+    const gridApiRef = useRef<GridApi<DataRow> | null>(null);
+    const updateGridRef = useWasmData(1000);
+
+    const onGridReady = (params: GridReadyEvent<DataRow>) => {
+        gridApiRef.current = params.api;
+        updateGridRef(params.api);
+    };
 
     const columnDefs: ColDef<DataRow>[] = useMemo(
         () => [
@@ -55,8 +57,8 @@ function App ()
             {
                 headerName: "Time (ms)",
                 field: "time_ms",
-                valueFormatter: ( { data } ) =>
-                    new Date( data?.time_ms ?? 0 ).toLocaleTimeString(),
+                valueFormatter: ({ data }) =>
+                    new Date(data?.time_ms ?? 0).toLocaleTimeString(),
             },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
@@ -70,9 +72,8 @@ function App ()
         [],
     );
 
-    const statusBar = useMemo( () =>
-    {
-        return {
+    const statusBar = useMemo(
+        () => ({
             statusPanels: [
                 { statusPanel: "agTotalAndFilteredRowCountComponent" },
                 { statusPanel: "agTotalRowCountComponent" },
@@ -80,8 +81,9 @@ function App ()
                 { statusPanel: "agSelectedRowCountComponent" },
                 { statusPanel: "agAggregationComponent" },
             ],
-        };
-    }, [] );
+        }),
+        [],
+    );
 
     return (
         <div className="App">
@@ -92,13 +94,13 @@ function App ()
             </h1>
             <div
                 className="ag-theme-alpine"
-                style={ { height: 400, width: 800 } }
+                style={{ height: 400, width: 800 }}
             >
                 <AgGridReact
-                    gridOptions={ gridOptions }
-                    columnDefs={ columnDefs }
-                    rowData={ rowData }
-                    statusBar={ statusBar }
+                    gridOptions={gridOptions}
+                    columnDefs={columnDefs}
+                    onGridReady={onGridReady}
+                    statusBar={statusBar}
                 />
             </div>
         </div>
