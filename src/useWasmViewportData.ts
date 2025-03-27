@@ -24,7 +24,7 @@ export function useWasmViewportData(intervalMs = 1000): IViewportDatasource {
 
     // On mount, get the initial full snapshot from WASM.
     useEffect(() => {
-        dataRef.current = updateWasmData();
+        dataRef.current = updateWasmData()!;
     }, []);
 
     // Set up an interval to update the visible rows every intervalMs.
@@ -32,7 +32,7 @@ export function useWasmViewportData(intervalMs = 1000): IViewportDatasource {
         const intervalId = setInterval(() => {
             // Get the latest snapshot from WASM.
             const newData = updateWasmData();
-            dataRef.current = newData;
+            dataRef.current = newData!;
             const params = viewportParamsRef.current;
             const range = viewportRangeRef.current;
             if (params && range.first <= range.last) {
