@@ -8,13 +8,13 @@ import {
 import { AllEnterpriseModule } from "ag-grid-enterprise";
 import { AgGridReact } from "ag-grid-react";
 import { useMemo } from "react";
-import { populate_objects } from "wasm-shared-memory";
+import init, { initThreadPool, populate_objects } from "wasm-shared-memory";
 import "./App.css";
 import { useWasmViewportData } from "./useWasmViewportData";
 
 // Register AgGrid community modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
-
+console.log(`crossOriginIsolated`, self.crossOriginIsolated);
 interface DataRow {
     id: number;
     value: number;
@@ -28,6 +28,11 @@ interface DataRow {
     h: number;
     time_ms: number;
 }
+
+// * WASM related part must be used in Worker, cannot start concurrent in Main Thread
+await init().then(async () => {
+    // await initThreadPool(navigator.hardwareConcurrency);
+});
 
 const NUM_OF_ROWS = 1000 * 1000;
 // Populate the WASM objects once.

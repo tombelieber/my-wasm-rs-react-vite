@@ -1,5 +1,8 @@
 use js_sys::Date;
+use rayon::prelude::*;
 use wasm_bindgen::prelude::*;
+
+pub use wasm_bindgen_rayon::init_thread_pool;
 
 // Define a struct with 11 fields.
 // With #[repr(C)], we get a predictable layout.
@@ -43,6 +46,7 @@ pub fn populate_objects(num: usize) {
         // time_ms is initially set to 0.
         OBJECTS = Some(
             (0..num)
+                .into_par_iter()
                 .map(|i| MyObject {
                     id: i as u32,
                     value: template.0,
@@ -67,9 +71,9 @@ pub fn update_time() {
     let now = Date::now(); // returns f64 milliseconds
     unsafe {
         if let Some(ref mut vec) = OBJECTS {
-            for obj in vec.iter_mut() {
+            vec.par_iter_mut().for_each(|obj| {
                 obj.time_ms = now;
-            }
+            });
         }
     }
 }
