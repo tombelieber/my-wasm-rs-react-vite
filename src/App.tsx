@@ -1,19 +1,16 @@
 // src/App.tsx
 import {
     ColDef,
-    GridApi,
+    FirstDataRenderedEvent,
     GridOptions,
-    GridReadyEvent,
     ModuleRegistry,
 } from "ag-grid-community";
-import "ag-grid-community/styles/ag-grid.css";
-import "ag-grid-community/styles/ag-theme-alpine.css";
+import { AllEnterpriseModule } from "ag-grid-enterprise";
 import { AgGridReact } from "ag-grid-react";
+import { useMemo } from "react";
 import { populate_objects } from "wasm-shared-memory";
 import "./App.css";
-import { useWasmData } from "./useWasmData";
-import { useMemo, useRef } from "react";
-import { AllEnterpriseModule } from "ag-grid-enterprise";
+import { useWasmViewportData } from "./useWasmViewportData";
 
 // Register AgGrid community modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
@@ -32,25 +29,27 @@ interface DataRow {
     time_ms: number;
 }
 
-const NUM_OF_ROWS = 10 * 1000;
+const NUM_OF_ROWS = 10 * 10 * 1000;
 // Populate the WASM objects once.
 populate_objects(NUM_OF_ROWS);
 
 // Define grid options with delta mode and unique row ID.
 const gridOptions: GridOptions<DataRow> = {
     getRowId: ({ data }) => data.id.toString(),
+    rowModelType: "viewport",
+    viewportRowModelPageSize: 100,
+    viewportRowModelBufferSize: 10,
+};
+
+const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRow>) => {
+    api.autoSizeAllColumns();
 };
 
 function App() {
-    const gridApiRef = useRef<GridApi<DataRow> | null>(null);
-    const updateGridRef = useWasmData(1000);
+    // Use our hook to get the viewport datasource.
+    const viewportDatasource = useWasmViewportData(1000);
 
-    const onGridReady = (params: GridReadyEvent<DataRow>) => {
-        gridApiRef.current = params.api;
-        updateGridRef(params.api);
-    };
-
-    const columnDefs: ColDef<DataRow>[] = useMemo(
+    const columnDefs: ColDef<DataRow>[] = useMemo<ColDef<DataRow>[]>(
         () => [
             { headerName: "ID", field: "id" },
             { headerName: "Value", field: "value" },
@@ -58,7 +57,7 @@ function App() {
                 headerName: "Time (ms)",
                 field: "time_ms",
                 valueFormatter: ({ data }) =>
-                    new Date(data?.time_ms ?? 0).toLocaleTimeString(),
+                    new Date(data?.time_ms ?? 0).toISOString(),
             },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
@@ -69,19 +68,6 @@ function App() {
             { headerName: "G", field: "g" },
             { headerName: "H", field: "h" },
         ],
-        [],
-    );
-
-    const statusBar = useMemo(
-        () => ({
-            statusPanels: [
-                { statusPanel: "agTotalAndFilteredRowCountComponent" },
-                { statusPanel: "agTotalRowCountComponent" },
-                { statusPanel: "agFilteredRowCountComponent" },
-                { statusPanel: "agSelectedRowCountComponent" },
-                { statusPanel: "agAggregationComponent" },
-            ],
-        }),
         [],
     );
 
@@ -99,8 +85,8 @@ function App() {
                 <AgGridReact
                     gridOptions={gridOptions}
                     columnDefs={columnDefs}
-                    onGridReady={onGridReady}
-                    statusBar={statusBar}
+                    viewportDatasource={viewportDatasource}
+                    onFirstDataRendered={onFirstDataRendered}
                 />
             </div>
         </div>
