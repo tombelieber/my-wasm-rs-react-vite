@@ -103,7 +103,6 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
                     sort,
                 };
             });
-        console.debug({ sort_model });
         setSortState(sort_model);
     };
 
@@ -114,8 +113,11 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
             benchmark(update_time);
 
             // Execute the query in WASM with the current filter and sort settings.
-            console.debug({ filterState, sortState });
-            const queryResult = query_indices(filterState, sortState);
+            const queryResult = benchmark(
+                query_indices,
+                filterState,
+                sortState,
+            );
             const memoryBuffer = get_memory().buffer;
             // Create a typed array view over the query result.
             const indices = new Uint32Array(
@@ -123,7 +125,6 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
                 queryResult.ptr,
                 queryResult.len,
             );
-            console.log("Query indices:", indices);
 
             const params = viewportParamsRef.current;
             const range = viewportRangeRef.current;
@@ -136,7 +137,6 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
                     first,
                     last,
                 );
-                console.debug({ updatedRows });
                 benchmark(params.setRowData, updatedRows);
             }
             // Optionally, free queryResult memory if your API provides a free method.

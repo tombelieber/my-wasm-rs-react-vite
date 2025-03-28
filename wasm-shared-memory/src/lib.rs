@@ -4,7 +4,9 @@ use serde_json::Value;
 use serde_wasm_bindgen;
 use std::cmp::Ordering;
 use wasm_bindgen::prelude::*;
-use web_sys::console;
+// use web_sys::console;
+
+// TODO memory cleanup is not properly managed
 
 // Now our struct has 13 fields: the original 11 plus a pointer and length for a dynamic string.
 // On wasm32, the layout is as follows:
@@ -36,12 +38,6 @@ pub struct MyObject {
 
 // Global storage for our objects.
 static mut OBJECTS: Option<Vec<MyObject>> = None;
-
-#[derive(Deserialize, Debug)]
-struct SortInstruction {
-    col_id: String,
-    sort: String, // expected "asc" or "desc"
-}
 
 #[wasm_bindgen]
 pub fn populate_objects(num: usize) {
@@ -147,29 +143,26 @@ pub fn get_object_size() -> usize {
 
 #[wasm_bindgen]
 pub struct QueryResult {
-    ptr: *mut u32,
-    len: usize,
+    pub ptr: *mut u32,
+    pub len: usize,
 }
 
-#[wasm_bindgen]
-impl QueryResult {
-    #[wasm_bindgen(getter)]
-    pub fn ptr(&self) -> *mut u32 {
-        self.ptr
-    }
-    #[wasm_bindgen(getter)]
-    pub fn len(&self) -> usize {
-        self.len
-    }
-    /// Free the memory allocated for this query result.
-    #[wasm_bindgen]
-    pub fn free(self) {
-        unsafe {
-            // Reconstruct the vector so its memory gets freed.
-            let _vec = Vec::from_raw_parts(self.ptr, self.len, self.len);
-        }
-    }
+#[derive(Deserialize, Debug, serde::Serialize)]
+struct SortInstruction {
+    col_id: String,
+    sort: String, // expected "asc" or "desc"
 }
+
+// A cache struct to hold the last query state.
+#[derive(Clone)]
+struct QueryCache {
+    filter_json: String,
+    sort_json: String,
+    indices: Box<[u32]>,
+}
+
+// Global cache for the last query result.
+static mut LAST_QUERY_CACHE: Option<QueryCache> = None;
 
 // * it should cache the grid state, so that it returned the last query without re-computing
 #[wasm_bindgen]
@@ -181,21 +174,27 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
     let sort_model: Vec<SortInstruction> =
         serde_wasm_bindgen::from_value(sort.clone()).unwrap_or_else(|_| Vec::new());
 
-    console::log_1(&JsValue::from_str(&format!(
-        "Filter model: {:?}",
-        filter_model
-    )));
-    console::log_1(&JsValue::from_str(&format!("Sort model: {:?}", sort_model)));
+    // Serialize the models so that we can compare to the cached version.
+    let new_filter_json = serde_json::to_string(&filter_model).unwrap_or_default();
+    let new_sort_json = serde_json::to_string(&sort_model).unwrap_or_default();
+
+    // Check if we already have a cached query result.
+    unsafe {
+        if let Some(ref cache) = LAST_QUERY_CACHE {
+            if cache.filter_json == new_filter_json && cache.sort_json == new_sort_json {
+                return QueryResult {
+                    ptr: cache.indices.as_ptr() as *mut u32,
+                    len: cache.indices.len(),
+                };
+            }
+        }
+    }
 
     // Get the master objects array.
     let objects = unsafe { OBJECTS.as_ref().expect("Objects not populated") };
 
     // Create an index vector representing each object.
     let mut indices: Vec<u32> = (0..(objects.len() as u32)).collect();
-    console::log_1(&JsValue::from_str(&format!(
-        "Indices before filtering: {:?}",
-        indices
-    )));
 
     // --- Filtering ---
     indices.retain(|&i| {
@@ -236,10 +235,6 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
         }
         true
     });
-    console::log_1(&JsValue::from_str(&format!(
-        "Indices after filtering: {:?}",
-        indices
-    )));
 
     // --- Sorting ---
     indices.sort_by(|&a_idx, &b_idx| {
@@ -278,16 +273,25 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
         }
         Ordering::Equal
     });
-    console::log_1(&JsValue::from_str(&format!(
-        "Indices after sorting: {:?}",
-        indices
-    )));
 
-    // Convert the vector into a boxed slice and expose it.
-    let len = indices.len();
+    // Convert the vector into a boxed slice.
     let boxed_slice = indices.into_boxed_slice();
-    let ptr = Box::into_raw(boxed_slice) as *mut u32;
 
-    console::log_1(&JsValue::from_str("Query indices finished."));
-    QueryResult { ptr, len }
+    // Update the cache.
+    let new_cache = QueryCache {
+        filter_json: new_filter_json,
+        sort_json: new_sort_json,
+        indices: boxed_slice,
+    };
+    unsafe {
+        LAST_QUERY_CACHE = Some(new_cache);
+        // Return the cached query result.
+        if let Some(ref cache) = LAST_QUERY_CACHE {
+            return QueryResult {
+                ptr: cache.indices.as_ptr() as *mut u32,
+                len: cache.indices.len(),
+            };
+        }
+    }
+    unreachable!();
 }

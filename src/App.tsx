@@ -26,6 +26,10 @@ const gridOptions: GridOptions<DataRowUI> = {
     rowModelType: "viewport",
     viewportRowModelPageSize: 50,
     viewportRowModelBufferSize: 10,
+    defaultColDef: {
+        filter: true,
+        floatingFilter: true,
+    },
 };
 
 const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRowUI>) => {
@@ -53,7 +57,7 @@ function App() {
                 valueFormatter: ({ data }) =>
                     new Date(data?.time_ms ?? 0).toISOString(),
             },
-            { headerName: "Name", field: "name" },
+            { headerName: "Name", field: "name", cellDataType: "string" },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
             { headerName: "C", field: "c" },
