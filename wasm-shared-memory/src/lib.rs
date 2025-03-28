@@ -2,36 +2,26 @@ use js_sys::Date;
 use serde::Deserialize;
 use serde_wasm_bindgen;
 use wasm_bindgen::prelude::*;
-// use web_sys::console;
 
-// TODO memory cleanup is not properly managed
-
-// Now our struct has 13 fields: the original 11 plus a pointer and length for a dynamic string.
-// On wasm32, the layout is as follows:
-//   id: u32          → 4 bytes
-//   padding:         → 4 bytes (to align following f64 fields)
-//   10 f64 fields   → 10 * 8 = 80 bytes
-//   => so far 88 bytes,
-// plus:
-//   name_ptr: *const u8 → 4 bytes (on wasm32)
-//   name_len: u32       → 4 bytes
-// Total = 88 + 8 = 96 bytes.
+// --- Data Structure ---
+// Instead of an inline fixed buffer, we store a pointer and length for the string.
+// We allocate a Box<[u8]> for each name.
 #[repr(C)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct MyObject {
-    pub id: u32,             // 4 bytes
-    pub value: f64,          // 8 bytes
-    pub a: f64,              // 8 bytes
-    pub b: f64,              // 8 bytes
-    pub c: f64,              // 8 bytes
-    pub d: f64,              // 8 bytes
-    pub e: f64,              // 8 bytes
-    pub f: f64,              // 8 bytes
-    pub g: f64,              // 8 bytes
-    pub h: f64,              // 8 bytes
-    pub time_ms: f64,        // 8 bytes (to be updated)
-    pub name_ptr: *const u8, // 8 bytes
-    pub name_len: u32,       // 4 bytes
+    pub id: u32,           // 4 bytes
+    pub value: f64,        // 8 bytes
+    pub a: f64,            // 8 bytes
+    pub b: f64,            // 8 bytes
+    pub c: f64,            // 8 bytes
+    pub d: f64,            // 8 bytes
+    pub e: f64,            // 8 bytes
+    pub f: f64,            // 8 bytes
+    pub g: f64,            // 8 bytes
+    pub h: f64,            // 8 bytes
+    pub time_ms: f64,      // 8 bytes
+    pub name_ptr: *mut u8, // pointer to a heap-allocated byte slice
+    pub name_len: u32,     // length of the string in bytes
 }
 
 // Global storage for our objects.
@@ -40,83 +30,61 @@ static mut OBJECTS: Option<Vec<MyObject>> = None;
 #[wasm_bindgen]
 pub fn populate_objects(num: usize) {
     unsafe {
-        // Define a "template" for the constant f64 fields.
-        let template = (
-            42.0, // value
-            1.1,  // a
-            2.2,  // b
-            3.3,  // c
-            4.4,  // d
-            5.5,  // e
-            6.6,  // f
-            7.7,  // g
-            8.8,  // h
-        );
-        // Prepare the base string that we want to store.
-        let base_str = "This is a sample sentence that might be longer than usual.";
-        let base_bytes = base_str.as_bytes();
-        // Allocate a boxed slice and leak it so the pointer remains valid.
-        let boxed = base_bytes.to_vec().into_boxed_slice();
-        let name_ptr = Box::into_raw(boxed) as *const u8;
-        let name_len = base_bytes.len() as u32;
-
-        // Populate with num objects with id equal to the index.
-        // time_ms is initially set to 0.
         OBJECTS = Some(
             (0..num)
-                .map(|i| MyObject {
-                    id: i as u32,
-                    value: template.0,
-                    a: template.1,
-                    b: template.2,
-                    c: template.3,
-                    d: template.4,
-                    e: template.5,
-                    f: template.6,
-                    g: template.7,
-                    h: template.8,
-                    time_ms: 0.0,
-                    name_ptr,
-                    name_len,
+                .map(|i| {
+                    // Allocate an initial string (as bytes) on the heap.
+                    let init_str = "Initial name".to_string();
+                    let boxed: Box<[u8]> = init_str.into_bytes().into_boxed_slice();
+                    let name_ptr = boxed.as_ptr() as *mut u8;
+                    let name_len = boxed.len() as u32;
+                    // Leak the boxed slice so that the pointer remains valid.
+                    std::mem::forget(boxed);
+                    MyObject {
+                        id: i as u32,
+                        value: 42.0,
+                        a: 1.1,
+                        b: 2.2,
+                        c: 3.3,
+                        d: 4.4,
+                        e: 5.5,
+                        f: 6.6,
+                        g: 7.7,
+                        h: 8.8,
+                        time_ms: 0.0,
+                        name_ptr,
+                        name_len,
+                    }
                 })
                 .collect(),
         );
     }
 }
 
-/// Update each object's time_ms field to the current time in milliseconds and update the string
-/// so that it includes the current time.
+/// Update each object's time and its name in place.
+/// For each object, free the old string allocation and replace it with a new one.
 #[wasm_bindgen]
 pub fn update_time() {
-    let now = Date::now(); // capture current time once, if you want to include it (optional)
-
-    // Define a static list of words. This list is shared among all rows.
-    static WORDS: &[&str] = &[
-        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
-    ];
-
+    let now = Date::now();
     unsafe {
         if let Some(ref mut vec) = OBJECTS {
-            // Iterate over each object, using the row index for deterministic "randomness"
             for (i, obj) in vec.iter_mut().enumerate() {
-                // Use simple arithmetic with the row index to pick words from the list.
-                let w1 = WORDS[(i * 17) % WORDS.len()];
-                let w2 = WORDS[(i * 23) % WORDS.len()];
-                let w3 = WORDS[(i * 31) % WORDS.len()];
-
-                // Build a new string that depends on the row index.
-                let new_str = format!(
-                    "This is a sample sentence. Row {}: Random words: {} {} {}.",
-                    i, w1, w2, w3
-                );
-
-                // Convert the string into a boxed slice.
-                let new_bytes = new_str.into_bytes().into_boxed_slice();
-                let new_len = new_bytes.len() as u32;
-                let new_ptr = Box::into_raw(new_bytes) as *const u8;
-
-                // Update the object's time (if desired) and its name pointer/length.
                 obj.time_ms = now;
+                let new_str = format!("Row {} at time {}", i, now);
+                // Allocate new bytes from the new string.
+                let new_box: Box<[u8]> = new_str.into_bytes().into_boxed_slice();
+                let new_ptr = new_box.as_ptr() as *mut u8;
+                let new_len = new_box.len() as u32;
+                // Free the previous allocation if any.
+                if !obj.name_ptr.is_null() && obj.name_len > 0 {
+                    // Recreate the boxed slice from the raw parts to drop it.
+                    let _ = Box::from_raw(std::slice::from_raw_parts_mut(
+                        obj.name_ptr,
+                        obj.name_len as usize,
+                    ));
+                }
+                // Leak the new allocation so its pointer stays valid.
+                std::mem::forget(new_box);
                 obj.name_ptr = new_ptr;
                 obj.name_len = new_len;
             }
@@ -139,17 +107,27 @@ pub fn get_objects_len() -> usize {
     unsafe { OBJECTS.as_ref().map(|vec| vec.len()).unwrap_or(0) }
 }
 
+/// Returns the WASM memory so JS can create a DataView over it.
 #[wasm_bindgen]
 pub fn get_memory() -> wasm_bindgen::JsValue {
     wasm_bindgen::memory()
 }
 
-/// Export the size (in bytes) of MyObject.
-/// With the new layout, the size is 96 bytes.
+/// Returns the size (in bytes) of MyObject.
+///
+/// On a wasm32 target with this layout, the struct should have:
+/// - id: 4 bytes + 4 bytes padding,
+/// - 9 × f64 = 72 bytes (from value to h) starting at offset 8,
+/// - time_ms: 8 bytes (offset 80),
+/// - name_ptr: 4 bytes (offset 88),
+/// - name_len: 4 bytes (offset 92),
+/// total = 96 bytes.
 #[wasm_bindgen]
 pub fn get_object_size() -> usize {
     std::mem::size_of::<MyObject>()
 }
+
+// --- Query and Caching (unchanged in essence) ---
 
 #[wasm_bindgen]
 pub struct QueryResult {
@@ -169,7 +147,6 @@ struct FilterInstruction {
     value: String, // string
 }
 
-// A cache struct to hold the last query state.
 #[derive(Clone)]
 struct QueryCache {
     filter_json: String,
@@ -177,22 +154,16 @@ struct QueryCache {
     indices: Box<[u32]>,
 }
 
-// Global cache for the last query result.
 static mut LAST_QUERY_CACHE: Option<QueryCache> = None;
 
 #[wasm_bindgen]
 pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
-    // Convert filter and sort instructions from JS.
     let filter_model: Vec<FilterInstruction> =
         serde_wasm_bindgen::from_value(filter.clone()).unwrap_or_else(|_| Vec::new());
     let sort_model: Vec<SortInstruction> =
         serde_wasm_bindgen::from_value(sort.clone()).unwrap_or_else(|_| Vec::new());
-
-    // Serialize the models so that we can compare to the cached version.
     let new_filter_json = serde_json::to_string(&filter_model).unwrap_or_default();
     let new_sort_json = serde_json::to_string(&sort_model).unwrap_or_default();
-
-    // Check if we already have a cached query result.
     unsafe {
         if let Some(ref cache) = LAST_QUERY_CACHE {
             if cache.filter_json == new_filter_json && cache.sort_json == new_sort_json {
@@ -203,28 +174,15 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
             }
         }
     }
-
-    // Get the master objects array.
     let objects = unsafe { OBJECTS.as_ref().expect("Objects not populated") };
-
-    // Create an index vector representing each object.
     let mut indices: Vec<u32> = (0..(objects.len() as u32)).collect();
-
-    // --- Filtering ---
     indices.retain(|&i| {
         let obj = &objects[i as usize];
-        // For each filter instruction, check if the object passes.
         for filter_inst in &filter_model {
             let filter_val = filter_inst.value.to_lowercase();
             let passes = match filter_inst.col_id.as_str() {
-                "id" => {
-                    let id_str = obj.id.to_string();
-                    id_str.to_lowercase().contains(&filter_val)
-                }
-                "value" => {
-                    let value_str = obj.value.to_string();
-                    value_str.to_lowercase().contains(&filter_val)
-                }
+                "id" => obj.id.to_string().to_lowercase().contains(&filter_val),
+                "value" => obj.value.to_string().to_lowercase().contains(&filter_val),
                 "name" => {
                     let slice =
                         unsafe { std::slice::from_raw_parts(obj.name_ptr, obj.name_len as usize) };
@@ -239,8 +197,6 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
         }
         true
     });
-
-    // --- Sorting ---
     indices.sort_by(|&a_idx, &b_idx| {
         let a = &objects[a_idx as usize];
         let b = &objects[b_idx as usize];
@@ -252,20 +208,12 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
                     .partial_cmp(&b.value)
                     .unwrap_or(std::cmp::Ordering::Equal),
                 "name" => {
-                    let a_str = unsafe {
-                        std::str::from_utf8(std::slice::from_raw_parts(
-                            a.name_ptr,
-                            a.name_len as usize,
-                        ))
-                        .unwrap_or("")
-                    };
-                    let b_str = unsafe {
-                        std::str::from_utf8(std::slice::from_raw_parts(
-                            b.name_ptr,
-                            b.name_len as usize,
-                        ))
-                        .unwrap_or("")
-                    };
+                    let a_slice =
+                        unsafe { std::slice::from_raw_parts(a.name_ptr, a.name_len as usize) };
+                    let b_slice =
+                        unsafe { std::slice::from_raw_parts(b.name_ptr, b.name_len as usize) };
+                    let a_str = std::str::from_utf8(a_slice).unwrap_or("");
+                    let b_str = std::str::from_utf8(b_slice).unwrap_or("");
                     a_str.cmp(b_str)
                 }
                 _ => std::cmp::Ordering::Equal,
@@ -280,11 +228,7 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
         }
         std::cmp::Ordering::Equal
     });
-
-    // Convert the vector into a boxed slice.
     let boxed_slice = indices.into_boxed_slice();
-
-    // Update the cache.
     let new_cache = QueryCache {
         filter_json: new_filter_json,
         sort_json: new_sort_json,
@@ -292,7 +236,6 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
     };
     unsafe {
         LAST_QUERY_CACHE = Some(new_cache);
-        // Return the cached query result.
         if let Some(ref cache) = LAST_QUERY_CACHE {
             return QueryResult {
                 ptr: cache.indices.as_ptr() as *mut u32,
