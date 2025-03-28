@@ -11,40 +11,23 @@ import { useMemo } from "react";
 import { get_memory, populate_objects } from "wasm-shared-memory";
 import "./App.css";
 import { useWasmViewportData } from "./useWasmViewportData";
-import StringCellRenderer from "./StringCellRenderer";
+import { DataRowUI } from "./DataRowUI";
 
 // Register AgGrid enterprise modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
-
-interface DataRow {
-    id: number;
-    value: number;
-    a: number;
-    b: number;
-    c: number;
-    d: number;
-    e: number;
-    f: number;
-    g: number;
-    h: number;
-    time_ms: number;
-    namePtr: number;
-    nameLen: number;
-    name: null;
-}
 
 // const NUM_OF_ROWS = 1000 * 1000;
 const NUM_OF_ROWS = 10 * 1000;
 populate_objects(NUM_OF_ROWS);
 
-const gridOptions: GridOptions<DataRow> = {
+const gridOptions: GridOptions<DataRowUI> = {
     getRowId: ({ data }) => data.id.toString(),
     rowModelType: "viewport",
     viewportRowModelPageSize: 10,
     viewportRowModelBufferSize: 0,
 };
 
-const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRow>) => {
+const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRowUI>) => {
     api.autoSizeAllColumns();
 };
 
@@ -52,7 +35,7 @@ function App() {
     // Use our hook to get the viewport datasource.
     const viewportDatasource = useWasmViewportData(1000);
 
-    const columnDefs: ColDef<DataRow>[] = useMemo<ColDef<DataRow>[]>(
+    const columnDefs: ColDef<DataRowUI>[] = useMemo<ColDef<DataRowUI>[]>(
         () => [
             { headerName: "ID", field: "id" },
             { headerName: "Value", field: "value" },
@@ -65,7 +48,6 @@ function App() {
             {
                 headerName: "Name",
                 field: "name", // dummy field; we use custom renderer
-                cellRenderer: StringCellRenderer,
             },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
