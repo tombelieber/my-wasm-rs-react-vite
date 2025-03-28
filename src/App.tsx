@@ -13,18 +13,18 @@ import "./App.css";
 import { useWasmViewportData } from "./useWasmViewportData";
 import { DataRowUI } from "./DataRowUI";
 
-// Register AgGrid enterprise modules.
+// Register AgGrid Enterprise modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
 
-// const NUM_OF_ROWS = 1000 * 1000;
+// For this example, we use 10k rows.
 const NUM_OF_ROWS = 10 * 1000;
 populate_objects(NUM_OF_ROWS);
 
 const gridOptions: GridOptions<DataRowUI> = {
     getRowId: ({ data }) => data.id.toString(),
     rowModelType: "viewport",
-    viewportRowModelPageSize: 10,
-    viewportRowModelBufferSize: 0,
+    viewportRowModelPageSize: 50,
+    viewportRowModelBufferSize: 10,
 };
 
 const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRowUI>) => {
@@ -34,6 +34,12 @@ const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRowUI>) => {
 function App() {
     // Use our hook to get the viewport datasource.
     const viewportDatasource = useWasmViewportData(1000);
+
+    // Pass the WASM memory via grid context.
+    const gridContext = useMemo(
+        () => ({ wasmMemory: get_memory() as WebAssembly.Memory }),
+        [],
+    );
 
     const columnDefs: ColDef<DataRowUI>[] = useMemo<ColDef<DataRowUI>[]>(
         () => [
@@ -45,10 +51,7 @@ function App() {
                 valueFormatter: ({ data }) =>
                     new Date(data?.time_ms ?? 0).toISOString(),
             },
-            {
-                headerName: "Name",
-                field: "name", // dummy field; we use custom renderer
-            },
+            { headerName: "Name", field: "name" },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
             { headerName: "C", field: "c" },
@@ -61,23 +64,16 @@ function App() {
         [],
     );
 
-    // Pass the WASM memory via grid context.
-    const gridContext = useMemo(
-        () => ({ wasmMemory: get_memory() as WebAssembly.Memory }),
-        [],
-    );
-
     return (
         <div className="App">
-            <h1>
-                WASM Shared Memory with AgGrid (Vite + React + TS)
-                <br />
-                (13 fields with a lazy UTF-8 string, 10k items)
-            </h1>
-            <div
-                className="ag-theme-alpine"
-                style={{ height: 400, width: 800 }}
-            >
+            <header className="app-header">
+                <h1>
+                    WASM Shared Memory with AgGrid (Vite + React + TS)
+                    <br />
+                    (13 fields with a lazy UTF-8 string, 10k items)
+                </h1>
+            </header>
+            <main className="grid-container">
                 <AgGridReact
                     gridOptions={gridOptions}
                     columnDefs={columnDefs}
@@ -85,7 +81,7 @@ function App() {
                     onFirstDataRendered={onFirstDataRendered}
                     context={gridContext}
                 />
-            </div>
+            </main>
         </div>
     );
 }
