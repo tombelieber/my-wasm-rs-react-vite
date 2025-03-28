@@ -4,11 +4,11 @@ import { ICellRendererParams } from "ag-grid-community";
 
 // It is assumed that you have access to the WASM memory buffer.
 // One approach is to pass it via the grid context (see below).
-interface NameCellRendererParams extends ICellRendererParams {
+interface StringCellRendererParams extends ICellRendererParams {
     context: { wasmMemory: WebAssembly.Memory };
 }
 
-const NameCellRenderer: React.FC<NameCellRendererParams> = (props) => {
+const StringCellRenderer: React.FC<StringCellRendererParams> = (props) => {
     const { data, context } = props;
     // Lazy decode the UTF-8 string from WASM memory using the pointer and length.
     const decodedName = useMemo(() => {
@@ -26,4 +26,4 @@ const NameCellRenderer: React.FC<NameCellRendererParams> = (props) => {
     return <span>{decodedName}</span>;
 };
 
-export default NameCellRenderer;
+export default StringCellRenderer;

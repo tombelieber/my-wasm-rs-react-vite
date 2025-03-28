@@ -11,7 +11,7 @@ import { useMemo } from "react";
 import { get_memory, populate_objects } from "wasm-shared-memory";
 import "./App.css";
 import { useWasmViewportData } from "./useWasmViewportData";
-import NameCellRenderer from "./NameCellRenderer";
+import StringCellRenderer from "./StringCellRenderer";
 
 // Register AgGrid enterprise modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
@@ -40,8 +40,8 @@ populate_objects(NUM_OF_ROWS);
 const gridOptions: GridOptions<DataRow> = {
     getRowId: ({ data }) => data.id.toString(),
     rowModelType: "viewport",
-    viewportRowModelPageSize: 100,
-    viewportRowModelBufferSize: 10,
+    viewportRowModelPageSize: 10,
+    viewportRowModelBufferSize: 0,
 };
 
 const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRow>) => {
@@ -65,7 +65,7 @@ function App() {
             {
                 headerName: "Name",
                 field: "name", // dummy field; we use custom renderer
-                cellRenderer: NameCellRenderer,
+                cellRenderer: StringCellRenderer,
             },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
