@@ -18,7 +18,7 @@ import { formatNumber } from "./formatNumber";
 ModuleRegistry.registerModules([AllEnterpriseModule]);
 
 // For this example, we use 10k rows.
-const NUM_OF_ROWS = 5 * 10 * 1000;
+const NUM_OF_ROWS = 10 * 1000;
 populate_objects(NUM_OF_ROWS);
 
 const gridOptions: GridOptions<DataRowUI> = {
