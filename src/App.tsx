@@ -8,11 +8,12 @@ import {
 import { AllEnterpriseModule } from "ag-grid-enterprise";
 import { AgGridReact } from "ag-grid-react";
 import { useMemo } from "react";
-import { populate_objects } from "wasm-shared-memory";
+import { get_memory, populate_objects } from "wasm-shared-memory";
 import "./App.css";
 import { useWasmViewportData } from "./useWasmViewportData";
+import NameCellRenderer from "./NameCellRenderer";
 
-// Register AgGrid community modules.
+// Register AgGrid enterprise modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
 
 interface DataRow {
@@ -27,13 +28,15 @@ interface DataRow {
     g: number;
     h: number;
     time_ms: number;
+    namePtr: number;
+    nameLen: number;
+    name: null;
 }
 
-const NUM_OF_ROWS = 1000 * 1000;
-// Populate the WASM objects once.
+// const NUM_OF_ROWS = 1000 * 1000;
+const NUM_OF_ROWS = 10 * 1000;
 populate_objects(NUM_OF_ROWS);
 
-// Define grid options with delta mode and unique row ID.
 const gridOptions: GridOptions<DataRow> = {
     getRowId: ({ data }) => data.id.toString(),
     rowModelType: "viewport",
@@ -59,6 +62,11 @@ function App() {
                 valueFormatter: ({ data }) =>
                     new Date(data?.time_ms ?? 0).toISOString(),
             },
+            {
+                headerName: "Name",
+                field: "name", // dummy field; we use custom renderer
+                cellRenderer: NameCellRenderer,
+            },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
             { headerName: "C", field: "c" },
@@ -71,12 +79,18 @@ function App() {
         [],
     );
 
+    // Pass the WASM memory via grid context.
+    const gridContext = useMemo(
+        () => ({ wasmMemory: get_memory() as WebAssembly.Memory }),
+        [],
+    );
+
     return (
         <div className="App">
             <h1>
                 WASM Shared Memory with AgGrid (Vite + React + TS)
                 <br />
-                (11 fields, 1M items benchmark with time updates)
+                (13 fields with a lazy UTF-8 string, 10k items)
             </h1>
             <div
                 className="ag-theme-alpine"
@@ -87,6 +101,7 @@ function App() {
                     columnDefs={columnDefs}
                     viewportDatasource={viewportDatasource}
                     onFirstDataRendered={onFirstDataRendered}
+                    context={gridContext}
                 />
             </div>
         </div>
