@@ -1,5 +1,6 @@
 // src/wasmData.ts
 import { DataRowUI } from "./DataRowUI";
+import { decodeName } from "./decoder";
 
 /**
  * Parse the shared WASM memory into an array of DataRow objects.
@@ -27,9 +28,8 @@ export function parseDataFromMemoryView(
     const nameLen = dataView.getUint32(offset + 92, true);
 
     // Create a Uint8Array from the buffer starting at namePtr with nameLen bytes.
-    const nameBytes = new Uint8Array(dataView.buffer, namePtr, nameLen);
     // Decode the bytes into a UTF-8 string.
-    const name = new TextDecoder("utf-8").decode(nameBytes);
+    const name = decodeName(dataView.buffer, namePtr, nameLen);
 
     return { id, value, a, b, c, d, e, f, g, h, time_ms, name };
 }
