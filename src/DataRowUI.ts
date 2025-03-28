@@ -4,91 +4,124 @@
  * proxy with getters that read directly from the DataView.
  */
 
+// Native JS implementation of the data structure
+export class JSObject {
+    id: number;
+    value: number;
+    a: number;
+    b: number;
+    c: number;
+    d: number;
+    e: number;
+    f: number;
+    g: number;
+    h: number;
+    time_ms: number;
+    name: string;
+
+    constructor(id: number) {
+        this.id = id;
+        this.value = 42.0;
+        this.a = 1.1;
+        this.b = 2.2;
+        this.c = 3.3;
+        this.d = 4.4;
+        this.e = 5.5;
+        this.f = 6.6;
+        this.g = 7.7;
+        this.h = 8.8;
+        this.time_ms = 0;
+        this.name = "Initial name";
+    }
+
+    updateTime(now: number) {
+        this.time_ms = now;
+        this.name = `Row ${this.id} at time ${now}`;
+    }
+}
+
 export class DataRowUI {
-    // Reuse a single TextDecoder instance.
-    static decoder: TextDecoder;
-    constructor(
-        private masterIndex: number,
-        private dataView: DataView,
-        private objectSize: number,
-    ) {}
+    private masterIndex: number;
+    private dataView: DataView;
+    private objectSize: number;
+    private jsObject?: JSObject;
+
+    constructor(masterIndex: number, dataView: DataView, objectSize: number, jsObject?: JSObject) {
+        this.masterIndex = masterIndex;
+        this.dataView = dataView;
+        this.objectSize = objectSize;
+        this.jsObject = jsObject;
+    }
+
+    private readWasmValue(offset: number): number {
+        return this.dataView.getFloat64(this.masterIndex * this.objectSize + offset, true);
+    }
+
+    private readWasmString(): string {
+        const ptr = this.dataView.getUint32(this.masterIndex * this.objectSize + 88, true);
+        const len = this.dataView.getUint32(this.masterIndex * this.objectSize + 92, true);
+        const memory = this.dataView.buffer;
+        const stringData = new Uint8Array(memory, ptr, len);
+        return new TextDecoder().decode(stringData);
+    }
 
     get id(): number {
-        return this.dataView.getUint32(
-            this.masterIndex * this.objectSize,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.id;
+        return this.dataView.getUint32(this.masterIndex * this.objectSize, true);
     }
+
     get value(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 8,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.value;
+        return this.readWasmValue(8);
     }
+
     get a(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 16,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.a;
+        return this.readWasmValue(16);
     }
+
     get b(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 24,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.b;
+        return this.readWasmValue(24);
     }
+
     get c(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 32,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.c;
+        return this.readWasmValue(32);
     }
+
     get d(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 40,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.d;
+        return this.readWasmValue(40);
     }
+
     get e(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 48,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.e;
+        return this.readWasmValue(48);
     }
+
     get f(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 56,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.f;
+        return this.readWasmValue(56);
     }
+
     get g(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 64,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.g;
+        return this.readWasmValue(64);
     }
+
     get h(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 72,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.h;
+        return this.readWasmValue(72);
     }
+
     get time_ms(): number {
-        return this.dataView.getFloat64(
-            this.masterIndex * this.objectSize + 80,
-            true,
-        );
+        if (this.jsObject) return this.jsObject.time_ms;
+        return this.readWasmValue(80);
     }
+
     get name(): string {
-        const baseOffset = this.masterIndex * this.objectSize;
-        // On wasm32, name_ptr is at offset 88 and name_len at offset 92.
-        const namePtr = this.dataView.getUint32(baseOffset + 88, true);
-        const nameLen = this.dataView.getUint32(baseOffset + 92, true);
-        const memoryBuffer = this.dataView.buffer;
-        const bytes = new Uint8Array(memoryBuffer, namePtr, nameLen);
-        if (!DataRowUI.decoder) {
-            DataRowUI.decoder = new TextDecoder("utf-8");
-        }
-        return DataRowUI.decoder.decode(bytes);
+        if (this.jsObject) return this.jsObject.name;
+        return this.readWasmString();
     }
 }
