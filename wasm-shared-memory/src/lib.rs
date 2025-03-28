@@ -171,6 +171,7 @@ impl QueryResult {
     }
 }
 
+// * it should cache the grid state, so that it returned the last query without re-computing
 #[wasm_bindgen]
 pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
     // Convert filter and sort instructions from JS.
