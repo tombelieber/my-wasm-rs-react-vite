@@ -12,12 +12,13 @@ import { get_memory, populate_objects } from "wasm-shared-memory";
 import "./App.css";
 import { useWasmViewportData } from "./useWasmViewportData";
 import { DataRowUI } from "./DataRowUI";
+import { formatNumber } from "./formatNumber";
 
 // Register AgGrid Enterprise modules.
 ModuleRegistry.registerModules([AllEnterpriseModule]);
 
 // For this example, we use 10k rows.
-const NUM_OF_ROWS = 10 * 1000;
+const NUM_OF_ROWS = 5 * 10 * 1000;
 populate_objects(NUM_OF_ROWS);
 
 const gridOptions: GridOptions<DataRowUI> = {
@@ -70,7 +71,8 @@ function App() {
                 <h1>
                     WASM Shared Memory with AgGrid (Vite + React + TS)
                     <br />
-                    (13 fields with a lazy UTF-8 string, 10k items)
+                    (13 fields with a lazy UTF-8 string,{" "}
+                    {formatNumber(NUM_OF_ROWS)} items)
                 </h1>
             </header>
             <main className="grid-container">
