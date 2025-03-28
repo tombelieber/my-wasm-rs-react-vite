@@ -34,7 +34,8 @@ const onFirstDataRendered = ({ api }: FirstDataRenderedEvent<DataRowUI>) => {
 
 function App() {
     // Use our hook to get the viewport datasource.
-    const viewportDatasource = useWasmViewportData(1000);
+    const { viewportDatasource, onFilterChanged, onSortChanged } =
+        useWasmViewportData(1000);
 
     // Pass the WASM memory via grid context.
     const gridContext = useMemo(
@@ -82,6 +83,8 @@ function App() {
                     viewportDatasource={viewportDatasource}
                     onFirstDataRendered={onFirstDataRendered}
                     context={gridContext}
+                    onFilterChanged={onFilterChanged}
+                    onSortChanged={onSortChanged}
                 />
             </main>
         </div>
