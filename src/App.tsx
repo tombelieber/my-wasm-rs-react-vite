@@ -57,7 +57,12 @@ function App() {
                 valueFormatter: ({ data }) =>
                     new Date(data?.time_ms ?? 0).toISOString(),
             },
-            { headerName: "Name", field: "name", cellDataType: "string" },
+            {
+                headerName: "Name",
+                field: "name",
+                cellDataType: "string",
+                filter: "agTextColumnFilter",
+            },
             { headerName: "A", field: "a" },
             { headerName: "B", field: "b" },
             { headerName: "C", field: "c" },

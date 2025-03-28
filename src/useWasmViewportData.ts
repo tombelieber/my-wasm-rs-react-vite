@@ -1,19 +1,19 @@
 // src/useWasmViewportData.ts
 import {
     FilterChangedEvent,
-    FilterModel,
     IViewportDatasource,
     IViewportDatasourceParams,
     SortChangedEvent,
     SortDirection,
+    TextFilterModel,
 } from "ag-grid-community";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-    query_indices,
     get_memory,
     get_object_size,
     get_objects_len,
     get_objects_ptr,
+    query_indices,
     update_time,
 } from "wasm-shared-memory";
 import { benchmark } from "./benchmark";
@@ -44,17 +44,20 @@ function getWasmDataInfo(): WasmDataInfo {
 }
 
 /**
- * New helper function: Given a Uint32Array of filtered & sorted indices,
- * and a viewport range (firstRow, lastRow), build a map of row data.
- * The queryIndices array provides the master data indices in the desired order.
+ * Given a Uint32Array of filtered & sorted indices and a viewport range,
+ * build a map of row data. The queryIndices array provides the master data indices.
  */
 function getRowDataMapFromIndices(
     queryIndices: Uint32Array,
     firstRow: number,
     lastRow: number,
 ): RowDataMap {
-    const { dataView, objectSize } = getWasmDataInfo();
     const rowDataMap: RowDataMap = {};
+    // If there are no filtered rows, return an empty map immediately.
+    if (queryIndices.length === 0 || firstRow > lastRow) {
+        return rowDataMap;
+    }
+    const { dataView, objectSize } = getWasmDataInfo();
     // Loop over the visible range in the filtered/sorted indices.
     for (let i = firstRow; i <= lastRow && i < queryIndices.length; i++) {
         // queryIndices[i] gives the actual index into the master data.
@@ -69,6 +72,7 @@ function getRowDataMapFromIndices(
 }
 
 type SortModel = { col_id: string; sort: string };
+type TxtFilterModel = { col_id: string; value: string };
 
 export type WasmViewportData = {
     viewportDatasource: IViewportDatasource;
@@ -85,15 +89,72 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
         last: -1,
     });
 
-    const [filterState, setFilterState] = useState<FilterModel>({});
-    const [sortState, setSortState] = useState<SortModel[]>([]);
+    // Replace state with refs for sort and filter models.
+    const sortModelRef = useRef<SortModel[]>([]);
+    const filterModelRef = useRef<TxtFilterModel[]>([]);
 
+    // Helper function to refresh data in the viewport.
+    const refreshData = useCallback(() => {
+        // Update WASM state (e.g., update time and associated strings)
+        benchmark(update_time);
+
+        // Execute the query in WASM with the current filter and sort settings.
+        const queryResult = benchmark(
+            query_indices,
+            filterModelRef.current,
+            sortModelRef.current,
+        );
+        const memoryBuffer = get_memory().buffer;
+        // Create a typed array view over the query result.
+        const indices = new Uint32Array(
+            memoryBuffer,
+            queryResult.ptr,
+            queryResult.len,
+        );
+
+        // Update the total row count.
+        viewportParamsRef.current?.setRowCount(indices.length);
+
+        // If viewport range is defined, update row data.
+        const params = viewportParamsRef.current;
+        const range = viewportRangeRef.current;
+        if (params && range.first <= range.last) {
+            const { first, last } = range;
+            const updatedRows: { [index: number]: DataRowUI } = benchmark(
+                getRowDataMapFromIndices,
+                indices,
+                first,
+                last,
+            );
+            benchmark(params.setRowData, updatedRows);
+        }
+    }, []);
+
+    // Trigger an immediate refresh when filters change.
     const onFilterChanged = (event: FilterChangedEvent<DataRowUI>) => {
-        setFilterState(event.api.getFilterModel());
+        const getFilterModel = event.api.getFilterModel();
+        const filters: TxtFilterModel[] = Object.keys(getFilterModel)
+            .filter((key) => {
+                const filterInstance = getFilterModel[key] as TextFilterModel;
+                return (
+                    filterInstance.filterType === "text" &&
+                    filterInstance.filter
+                );
+            })
+            .map((key) => {
+                const filterModel = getFilterModel[key] as TextFilterModel;
+                return {
+                    col_id: key,
+                    value: filterModel.filter as string,
+                };
+            });
+        filterModelRef.current = filters;
+        benchmark(refreshData);
     };
+
+    // Trigger an immediate refresh when sort changes.
     const onSortChanged = ({ columns }: SortChangedEvent<DataRowUI>) => {
         if (!columns) return;
-
         const sort_model: SortModel[] = columns
             .filter((col) => col.getSort())
             .map((item) => {
@@ -103,47 +164,17 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
                     sort,
                 };
             });
-        setSortState(sort_model);
+        sortModelRef.current = sort_model;
+        benchmark(refreshData);
     };
 
-    // Set up an interval to update the visible rows every intervalMs.
+    // Set up an interval to periodically refresh the visible rows.
     useEffect(() => {
         const intervalId = setInterval(() => {
-            // Update WASM state (for example, update time and associated strings)
-            benchmark(update_time);
-
-            // Execute the query in WASM with the current filter and sort settings.
-            const queryResult = benchmark(
-                query_indices,
-                filterState,
-                sortState,
-            );
-            const memoryBuffer = get_memory().buffer;
-            // Create a typed array view over the query result.
-            const indices = new Uint32Array(
-                memoryBuffer,
-                queryResult.ptr,
-                queryResult.len,
-            );
-
-            const params = viewportParamsRef.current;
-            const range = viewportRangeRef.current;
-            if (params && range.first <= range.last) {
-                const { first, last } = range;
-                // Use the query indices to build the row data for the visible range.
-                const updatedRows: { [index: number]: DataRowUI } = benchmark(
-                    getRowDataMapFromIndices,
-                    indices,
-                    first,
-                    last,
-                );
-                benchmark(params.setRowData, updatedRows);
-            }
-            // Optionally, free queryResult memory if your API provides a free method.
-            // queryResult.free();
+            benchmark(refreshData);
         }, intervalMs);
         return () => clearInterval(intervalId);
-    }, [filterState, intervalMs, sortState]);
+    }, [intervalMs, refreshData]);
 
     const viewportDatasource = useMemo<IViewportDatasource>(() => {
         return {
@@ -158,27 +189,14 @@ export function useWasmViewportData(intervalMs = 1000): WasmViewportData {
             setViewportRange: (firstRow: number, lastRow: number) => {
                 if (!viewportParamsRef.current) return;
                 viewportRangeRef.current = { first: firstRow, last: lastRow };
-                // You can also immediately update the viewport if desired:
-                const queryResult = query_indices(filterState, sortState);
-                const memoryBuffer = get_memory().buffer;
-                const indices = new Uint32Array(
-                    memoryBuffer,
-                    queryResult.ptr,
-                    queryResult.len,
-                );
-                const rowDataMap = getRowDataMapFromIndices(
-                    indices,
-                    firstRow,
-                    lastRow,
-                );
-                benchmark(viewportParamsRef.current.setRowData, rowDataMap);
+                benchmark(refreshData);
             },
             /** Called when the datasource is destroyed (optional cleanup). */
             destroy: () => {
                 viewportParamsRef.current = null;
             },
         };
-    }, [filterState, sortState]);
+    }, [refreshData]);
 
     return {
         viewportDatasource,

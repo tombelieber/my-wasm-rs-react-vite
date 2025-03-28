@@ -1,8 +1,6 @@
 use js_sys::Date;
 use serde::Deserialize;
-use serde_json::Value;
 use serde_wasm_bindgen;
-use std::cmp::Ordering;
 use wasm_bindgen::prelude::*;
 // use web_sys::console;
 
@@ -90,23 +88,35 @@ pub fn populate_objects(num: usize) {
 /// so that it includes the current time.
 #[wasm_bindgen]
 pub fn update_time() {
-    let now = Date::now(); // current time in ms
-                           // Create the new string once.
-    let new_str = format!(
-        "This is a sample sentence that might be longer than usual. Current time: {}",
-        now
-    );
-    let new_bytes = new_str.as_bytes();
-    let new_len = new_bytes.len() as u32;
-    // Allocate the new string once.
-    let boxed = new_bytes.to_vec().into_boxed_slice();
-    let new_ptr = Box::into_raw(boxed) as *const u8;
+    let now = Date::now(); // capture current time once, if you want to include it (optional)
+
+    // Define a static list of words. This list is shared among all rows.
+    static WORDS: &[&str] = &[
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
+    ];
 
     unsafe {
         if let Some(ref mut vec) = OBJECTS {
-            for obj in vec.iter_mut() {
+            // Iterate over each object, using the row index for deterministic "randomness"
+            for (i, obj) in vec.iter_mut().enumerate() {
+                // Use simple arithmetic with the row index to pick words from the list.
+                let w1 = WORDS[(i * 17) % WORDS.len()];
+                let w2 = WORDS[(i * 23) % WORDS.len()];
+                let w3 = WORDS[(i * 31) % WORDS.len()];
+
+                // Build a new string that depends on the row index.
+                let new_str = format!(
+                    "This is a sample sentence. Row {}: Random words: {} {} {}.",
+                    i, w1, w2, w3
+                );
+
+                // Convert the string into a boxed slice.
+                let new_bytes = new_str.into_bytes().into_boxed_slice();
+                let new_len = new_bytes.len() as u32;
+                let new_ptr = Box::into_raw(new_bytes) as *const u8;
+
+                // Update the object's time (if desired) and its name pointer/length.
                 obj.time_ms = now;
-                // Update each object with the same pointer and length.
                 obj.name_ptr = new_ptr;
                 obj.name_len = new_len;
             }
@@ -153,6 +163,12 @@ struct SortInstruction {
     sort: String, // expected "asc" or "desc"
 }
 
+#[derive(Deserialize, Debug, serde::Serialize)]
+struct FilterInstruction {
+    col_id: String,
+    value: String, // string
+}
+
 // A cache struct to hold the last query state.
 #[derive(Clone)]
 struct QueryCache {
@@ -164,13 +180,11 @@ struct QueryCache {
 // Global cache for the last query result.
 static mut LAST_QUERY_CACHE: Option<QueryCache> = None;
 
-// TODO it should support multi sort (sort model has sort_index)
 #[wasm_bindgen]
 pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
     // Convert filter and sort instructions from JS.
-    let filter_model: std::collections::HashMap<String, Value> =
-        serde_wasm_bindgen::from_value(filter.clone())
-            .unwrap_or_else(|_| std::collections::HashMap::new());
+    let filter_model: Vec<FilterInstruction> =
+        serde_wasm_bindgen::from_value(filter.clone()).unwrap_or_else(|_| Vec::new());
     let sort_model: Vec<SortInstruction> =
         serde_wasm_bindgen::from_value(sort.clone()).unwrap_or_else(|_| Vec::new());
 
@@ -199,33 +213,23 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
     // --- Filtering ---
     indices.retain(|&i| {
         let obj = &objects[i as usize];
-        // For each filter condition, check if the object passes.
-        for (field, criterion) in &filter_model {
-            let passes = match field.as_str() {
+        // For each filter instruction, check if the object passes.
+        for filter_inst in &filter_model {
+            let filter_val = filter_inst.value.to_lowercase();
+            let passes = match filter_inst.col_id.as_str() {
                 "id" => {
-                    if let Some(filter_val) = criterion.get("filter").and_then(|v| v.as_u64()) {
-                        obj.id as u64 == filter_val
-                    } else {
-                        true
-                    }
+                    let id_str = obj.id.to_string();
+                    id_str.to_lowercase().contains(&filter_val)
                 }
                 "value" => {
-                    if let Some(filter_val) = criterion.get("filter").and_then(|v| v.as_f64()) {
-                        obj.value == filter_val
-                    } else {
-                        true
-                    }
+                    let value_str = obj.value.to_string();
+                    value_str.to_lowercase().contains(&filter_val)
                 }
                 "name" => {
-                    if let Some(filter_str) = criterion.get("filter").and_then(|v| v.as_str()) {
-                        let slice = unsafe {
-                            std::slice::from_raw_parts(obj.name_ptr, obj.name_len as usize)
-                        };
-                        let name_str = std::str::from_utf8(slice).unwrap_or("");
-                        name_str.to_lowercase().contains(&filter_str.to_lowercase())
-                    } else {
-                        true
-                    }
+                    let slice =
+                        unsafe { std::slice::from_raw_parts(obj.name_ptr, obj.name_len as usize) };
+                    let name_str = std::str::from_utf8(slice).unwrap_or("");
+                    name_str.to_lowercase().contains(&filter_val)
                 }
                 _ => true,
             };
@@ -243,7 +247,10 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
         for sort_inst in &sort_model {
             let ordering = match sort_inst.col_id.as_str() {
                 "id" => a.id.cmp(&b.id),
-                "value" => a.value.partial_cmp(&b.value).unwrap_or(Ordering::Equal),
+                "value" => a
+                    .value
+                    .partial_cmp(&b.value)
+                    .unwrap_or(std::cmp::Ordering::Equal),
                 "name" => {
                     let a_str = unsafe {
                         std::str::from_utf8(std::slice::from_raw_parts(
@@ -261,9 +268,9 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
                     };
                     a_str.cmp(b_str)
                 }
-                _ => Ordering::Equal,
+                _ => std::cmp::Ordering::Equal,
             };
-            if ordering != Ordering::Equal {
+            if ordering != std::cmp::Ordering::Equal {
                 return if sort_inst.sort == "asc" {
                     ordering
                 } else {
@@ -271,7 +278,7 @@ pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
                 };
             }
         }
-        Ordering::Equal
+        std::cmp::Ordering::Equal
     });
 
     // Convert the vector into a boxed slice.
