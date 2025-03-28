@@ -164,7 +164,7 @@ struct QueryCache {
 // Global cache for the last query result.
 static mut LAST_QUERY_CACHE: Option<QueryCache> = None;
 
-// * it should cache the grid state, so that it returned the last query without re-computing
+// TODO it should support multi sort (sort model has sort_index)
 #[wasm_bindgen]
 pub fn query_indices(filter: &JsValue, sort: &JsValue) -> QueryResult {
     // Convert filter and sort instructions from JS.
